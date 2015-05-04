@@ -1,0 +1,25 @@
+   val listings = DataUtil.getDwLstgItem(sc, DateUtil.addDaysToDate(startDate, -89))
+    val viEvents = details.map { vi => (vi.get(14).asInstanceOf[Long], vi) }
+
+    val lstgItemMap = listings.map { lstg => (lstg.getItemId().toLong, lstg) }.collectAsMap
+    val broadCastMap = sc.broadcast(lstgItemMap)
+    val viEventsWithListings: RDD[(Long, (DetailInputRecord, VISummary, Long))] = viEvents.mapPartitions({
+      iter =>
+        val lstgItemMap = broadCastMap.value
+        for {
+          (itemId, viDetail) <- iter
+          if (lstgItemMap.contains(itemId))
+        } yield ({
+          val listing = lstgItemMap.get(itemId).get
+          val viSummary = new VISummary
+          viSummary.leafCategoryId = listing.getLeafCategId().toInt
+          viSummary.itemSiteId = listing.getItemSiteId().toInt
+          viSummary.auctionTypeCode = listing.getAuctTypeCode().toInt
+          viSummary.sellerCountryId = listing.getSlrCntryId().toInt
+          viSummary.buyerSegment = "0"
+          viSummary.isBin = (if (listing.getBinPriceLstgCurncy.doubleValue() > 0) 1 else 0)
+
+          val sellerId = listing.getSlrId.toLong
+          (sellerId, (viDetail, viSummary, itemId))
+        })
+    })
